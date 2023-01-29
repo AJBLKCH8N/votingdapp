@@ -1,10 +1,10 @@
 import './App.css';
 import { useState, useEffect } from 'react';
-import { ethers, utils } from 'ethers'
 import Dao from './artifacts/contracts/Dao.sol/Dao.json'
-import { use } from 'chai';
+import EthereumService from './services/ethereum.service';
 
 const daoAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+const ethereumService = new EthereumService(); 
 
 function App() {
   const[id, setId] = useState()
@@ -14,17 +14,11 @@ function App() {
   const [proposalId, setProposalId] = useState()
   const [proposals, setProposals] = useState([])
 
-  async function requestAccount() {
-    await window.ethereum.request({ method: 'eth_requestAccounts'});
-  }
-
   async function createProposal() {
     if (!description) return
     if (typeof window.ethereum !== 'undefined') {
-      await requestAccount()
-      const provider = new ethers.providers.Web3Provider(window.ethereum)
-      const signer = provider.getSigner()
-      const contract = new ethers.Contract(daoAddress, Dao.abi,signer)
+      await ethereumService.requestAccount();
+      const contract = await ethereumService.getContract(daoAddress, Dao);
       const transaction = await contract.createProposal(description)
       await transaction.wait()
     }
@@ -33,10 +27,8 @@ function App() {
   async function getProposal(proposalId) {
     if (!proposalId) return // check that proposalId is not empty
     if (typeof window.ethereum !== 'undefined') {
-      await requestAccount() // you might have a requestAccount function to get the current user's account
-      const provider = new ethers.providers.Web3Provider(window.ethereum)
-      const signer = provider.getSigner()
-      const contract = new ethers.Contract(daoAddress, Dao.abi,signer) // daoAddress is the address of your deployed smart contract, Dao.abi is the ABI of your smart contract
+      await ethereumService.requestAccount();
+      const contract = await ethereumService.getContract(daoAddress, Dao);
       try {
         //this gets the Proposals mapping from the smart contract
         const proposal = await contract.functions.Proposals(proposalId);
@@ -51,19 +43,17 @@ function App() {
   async function voteOnProposal(id, vote) {
     if (!id || !vote) return;
     if (typeof window.ethereum !== 'undefined') {
-        await requestAccount()
-        const provider = new ethers.providers.Web3Provider(window.ethereum)
-        const signer = provider.getSigner()
-        const contract = new ethers.Contract(daoAddress, Dao.abi, signer)
+      await ethereumService.requestAccount();
+      const contract = await ethereumService.getContract(daoAddress, Dao);
 
         //check that the deadline hasnt passed
         const deadline = await contract.functions.Proposals(id).deadline();
-        if (deadline < await provider.getBlockNumber()) {
+        if (deadline < await ethereumService.provider.getBlockNumber()) {
             throw new Error("The deadline has passed for this Proposal");
         }
         
         //check that the user hasnt voted yet on the proposal
-        const voteStatus = await contract.functions.Proposals(id).voteStatus(signer.address);
+        const voteStatus = await contract.functions.Proposals(id).voteStatus(ethereumService.signer.address);
         if (voteStatus) {
           throw new Error("You have already voted on this Proposal");
         }
@@ -83,13 +73,11 @@ function App() {
     async function countVotes() {
       if (!id) return
       if (typeof window.ethereum !== 'undefined') {
-        await requestAccount()
-        const provider = new ethers.providers.Web3Provider(window.ethereum)
-        const signer = provider.getSigner()
-        const contract = new ethers.Contract(daoAddress, Dao.abi,signer)
-
+        await ethereumService.requestAccount();
+        const contract = await ethereumService.getContract(daoAddress, Dao);
+  
         //check that the caller is the contract owner
-        const contractOwner = await contract.functions.contractOwner(signer.address);
+        const contractOwner = await contract.functions.contractOwner(ethereumService.signer.address);
         if (!contractOwner) {
           throw new Error("You are not the Contract Owner. Only the Contract Owner can count votes");
         }
@@ -102,7 +90,7 @@ function App() {
 
         //make sure that the voting hasnt concluded yet
         const deadline = await contract.functions.Proposals(id).deadline();
-        if (deadline > await provider.getBlockNumber()) {
+        if (deadline > await ethereumService.provider.getBlockNumber()) {
             throw new Error("Voting has not yet concluded. You still have time until all voting is finished");
         }
 
@@ -114,9 +102,8 @@ function App() {
 
     useEffect(() => {
       async function fetchData() {
-        const provider = new ethers.providers.Web3Provider(window.ethereum)
-        const signer = provider.getSigner()
-        const contract = new ethers.Contract(daoAddress, Dao.abi,signer)
+      await ethereumService.requestAccount();
+      const contract = await ethereumService.getContract(daoAddress, Dao);
         try {
           let proposalsArray = [];
           const nextProposal = await contract.nextProposal(); // get the value of the nextProposal variable
@@ -150,9 +137,9 @@ function App() {
       <form onSubmit={e => {
                 e.preventDefault()
                 createProposal()
-            }}>
-                <input placeholder="Enter proposal description" onChange={e => setDescription(e.target.value)} />
-                <button type="submit">Create Proposal</button>
+            }} style={{display: "flex", justifyContent: "space-between"}}>
+                <input placeholder="Enter proposal description" onChange={e => setDescription(e.target.value)} style={{borderRadius: "20px"}} />
+                <button type="submit" style={{borderRadius: "20px", marginLeft: "10px"}}>Create Proposal</button>
             </form>
       </h2>
       <h2>
